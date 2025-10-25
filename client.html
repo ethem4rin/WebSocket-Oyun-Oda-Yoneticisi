@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Casus Kim? Client Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #messages { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; background-color: #f4f4f4; }
+        .log-message { margin-bottom: 5px; padding: 5px; border-bottom: 1px dotted #ddd; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; }
+        h3 { margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <h1>Casus Kim? WebSocket Testi</h1>
+    <div id="status">Bağlantı Durumu: Henüz Bağlanılmadı</div>
+
+    <h3>1. Odaya Bağlan</h3>
+    <input type="text" id="playerName" placeholder="Oyuncu Adınız" value="TestOyuncu">
+    <input type="text" id="roomCode" placeholder="Oda Kodu (Varsa)">
+    <button onclick="connectAndCreateRoom()">Oda Oluştur</button>
+    <button onclick="connectAndJoinRoom()">Odaya Katıl</button>
+    
+    <hr>
+    
+    <h3>2. Konsol Çıktısı (Sunucu Mesajları)</h3>
+    <div id="messages"></div>
+
+    <script>
+        const WS_URL = 'ws://localhost:8080'; // Sunucunun çalıştığı adres ve port
+        let ws;
+        let playerId = null;
+        let currentRoomCode = null;
+
+        const messagesDiv = document.getElementById('messages');
+        const statusDiv = document.getElementById('status');
+
+        function log(message, type = 'info') {
+            const el = document.createElement('div');
+            el.className = 'log-message ' + type;
+            el.textContent = message;
+            messagesDiv.appendChild(el);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function setupWebSocket() {
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+                log("Mevcut bağlantı kapatılıyor...", "warn");
+                ws.close();
+            }
+
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                statusDiv.textContent = 'Bağlantı Durumu: BAĞLANDI (Açık)';
+                log('WebSocket sunucuya bağlandı!', 'success');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                log(`ALINAN: ${data.type}`);
+                
+                // Gelen mesaj tiplerini işleme
+                switch (data.type) {
+                    case 'roomCreated':
+                    case 'roomJoined':
+                        playerId = data.playerId;
+                        currentRoomCode = data.room.code;
+                        log(`--> Başarıyla Odaya Katıldınız. PlayerID: ${playerId}, Oda Kodu: ${currentRoomCode}`, 'success');
+                        log(`Oda Durumu: ${JSON.stringify(data.room)}`);
+                        break;
+                    case 'playerJoined':
+                        log(`--> Yeni Oyuncu Katıldı: ${data.player.name}`);
+                        log(`Oda Durumu: ${JSON.stringify(data.room)}`);
+                        break;
+                    case 'playerLeft':
+                        log(`--> Bir Oyuncu Ayrıldı: ${data.playerId}`);
+                        log(`Oda Durumu: ${JSON.stringify(data.room)}`);
+                        break;
+                    case 'error':
+                        log(`SUNUCU HATASI: ${data.message}`, 'error');
+                        break;
+                    case 'wordShown':
+                        log(`KELİME GÖSTERİLDİ: Casus musun? ${data.isSpy ? 'EVET' : 'HAYIR'}`, data.isSpy ? 'warn' : 'success');
+                        if (!data.isSpy) {
+                            log(`Gizli Kelime: ${data.word}, Kategori: ${data.category}`);
+                        } else {
+                            log(`Casussun! Kelime: Yem Kategori: ${data.category}`);
+                        }
+                        break;
+                    // Diğer tüm mesaj tipleri de burada gösterilir: gameStarted, votingStarted vb.
+                    default:
+                        log(`Bilinmeyen/Genel Mesaj: ${JSON.stringify(data)}`);
+                }
+            };
+
+            ws.onclose = () => {
+                statusDiv.textContent = 'Bağlantı Durumu: KAPALI';
+                log('WebSocket bağlantısı kesildi.', 'error');
+            };
+
+            ws.onerror = (error) => {
+                log('WebSocket hatası oluştu.', 'error');
+            };
+        }
+
+        function connectAndCreateRoom() {
+            setupWebSocket();
+            const playerName = document.getElementById('playerName').value;
+            
+            // Bağlantı açıldığında mesajı gönder
+            ws.onopen = () => {
+                statusDiv.textContent = 'Bağlantı Durumu: BAĞLANDI (Açık)';
+                log('WebSocket sunucuya bağlandı!', 'success');
+                
+                const message = {
+                    type: 'createRoom',
+                    playerName: playerName
+                };
+                ws.send(JSON.stringify(message));
+                log(`GÖNDERİLEN: createRoom, Player: ${playerName}`);
+            };
+        }
+
+        function connectAndJoinRoom() {
+            setupWebSocket();
+            const playerName = document.getElementById('playerName').value;
+            const roomCode = document.getElementById('roomCode').value;
+
+            if (!roomCode) {
+                log("Odaya katılmak için bir Oda Kodu giriniz.", "error");
+                return;
+            }
+
+            // Bağlantı açıldığında mesajı gönder
+            ws.onopen = () => {
+                statusDiv.textContent = 'Bağlantı Durumu: BAĞLANDI (Açık)';
+                log('WebSocket sunucuya bağlandı!', 'success');
+                
+                const message = {
+                    type: 'joinRoom',
+                    playerName: playerName,
+                    roomCode: roomCode
+                };
+                ws.send(JSON.stringify(message));
+                log(`GÖNDERİLEN: joinRoom, Player: ${playerName}, Room: ${roomCode}`);
+            };
+        }
+    </script>
+
+</body>
+</html>
